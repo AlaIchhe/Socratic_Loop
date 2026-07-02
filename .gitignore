@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Pytest
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Type checking
+.mypy_cache/
+.pyright/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Environment
+.env
+*.db
+checkpoints.db
+
+# OS
+.DS_Store
+Thumbs.db
