@@ -40,7 +40,10 @@ def _is_retryable(error: Exception) -> bool:
         return True
     # langchain / openai 的 RateLimitError, APITimeoutError 等
     error_name = type(error).__name__
-    return any(keyword in error_name.lower() for keyword in ("timeout", "ratelimit", "connection", "apiconnection"))
+    return any(
+        keyword in error_name.lower()
+        for keyword in ("timeout", "ratelimit", "connection", "apiconnection")
+    )
 
 
 # =============================================================================
@@ -155,6 +158,7 @@ def invoke_llm(
     system_prompt: str,
     user_prompt: str,
     *,
+    model_config: dict[str, object] | None = None,
     on_retry: Callable[[int, int, float, Exception], None] | None = None,
 ) -> str:
     """调用 LLM 并返回提取后的文本内容（含自动重试）。
@@ -162,15 +166,27 @@ def invoke_llm(
     封装 model 懒初始化 + SystemMessage/HumanMessage 构造 + invoke + 内容提取。
 
     Args:
-        model: 可选的预注入模型（None 则从环境变量创建）。
+        model: 可选的预注入模型（None 则按 model_config 或 env 创建）。
         temperature: LLM 温度参数（0.0 = 确定性，0.7 = 创造性）。
         system_prompt: 系统提示。
         user_prompt: 用户提示。
+        model_config: 前端驱动的模型配置 dict（None 则回退到 env）。
+            结构对齐 config.model_manager.ModelConfig。
         on_retry: 可选的重试进度回调。
 
     Returns:
         LLM 响应文本（已 strip）。
     """
+    if model is None and model_config is not None:
+        from config.model_manager import build_chat_model, config_from_session
+
+        cfg = config_from_session(model_config)
+        if cfg is not None:
+            # model_config 中的 temperature 优先级低于显式传入的 temperature 参数
+            # （显式 temperature 是 node 根据角色指定的：Opponent/Presenter=0.7, Referee=0.0）
+            cfg.temperature = temperature
+            model = build_chat_model(cfg)
+
     if model is None:
         model = get_chat_model(temperature=temperature)
 

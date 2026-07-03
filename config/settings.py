@@ -32,22 +32,18 @@ class AppSettings(BaseSettings):
         description="Chainlit 服务端口",
     )
 
-    # ── LLM ──
-    llm_model: str = Field(
-        default="gpt-4o",
-        description="LLM 模型名称",
-    )
+    # ── LLM（仅作为前端 Settings 面板的初始默认值；运行时由前端覆盖） ──
     llm_base_url: str | None = Field(
         default=None,
-        description="LLM API 端点（None = OpenAI 官方）",
+        description="LLM API 端点初始默认值（None = 由前端选 provider 后填充）",
     )
     llm_api_key: str | None = Field(
         default=None,
-        description="LLM API Key（优先级高于 OPENAI_API_KEY）",
+        description="LLM API Key 初始默认值（前端可覆盖）",
     )
     openai_api_key: str | None = Field(
         default=None,
-        description="OpenAI API Key（LLM_API_KEY 未设置时回退）",
+        description="OpenAI API Key（LLM_API_KEY 未设置时回退，向后兼容）",
     )
 
     # ── LangSmith 追踪 ──

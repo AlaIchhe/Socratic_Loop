@@ -5,7 +5,7 @@ Workflow 图编排的单元测试。
 所有节点用纯函数 Mock，不涉及 LLM 调用。
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

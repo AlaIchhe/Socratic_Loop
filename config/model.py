@@ -1,6 +1,9 @@
 """
 模型工厂 —— 统一管理 LLM 实例的创建。
 
+运行时多实例路径请用 `config.model_manager`（前端驱动配置），
+本模块保留给测试和 env-only 场景（向后兼容）。
+
 配置读取委托 config/settings.py:settings（pydantic-settings 单一读取器），
 本模块保留 load_model_config() / has_configured_api_key() 作为薄封装，
 保持向后兼容（含测试中通过 env mapping 注入的路径）。
@@ -12,6 +15,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -41,7 +45,11 @@ def _get_env_str(source: Mapping[str, object], key: str) -> str:
 
 def _parse_from_mapping(source: Mapping[str, object]) -> ModelConfig:
     """从显式映射解析配置（测试注入路径）。"""
-    api_key = _get_env_str(source, "LLM_API_KEY") or _get_env_str(source, "OPENAI_API_KEY") or None
+    api_key = (
+        _get_env_str(source, "LLM_API_KEY")
+        or _get_env_str(source, "OPENAI_API_KEY")
+        or None
+    )
     if api_key == _PLACEHOLDER_API_KEY:
         api_key = None
 
@@ -65,7 +73,8 @@ def load_model_config(env: Mapping[str, object] | None = None) -> ModelConfig:
     # 运行时路径：重新构造以读取最新 os.environ
     s = AppSettings()
     return ModelConfig(
-        model_name=s.llm_model,
+        # 默认模型名：前端驱动时由 Settings panel 覆盖；env-only 场景回退到 gpt-4o
+        model_name=_get_env_str(os.environ, "LLM_MODEL") or "gpt-4o",
         # 空串视为未配置（与旧行为一致："" or None → None）
         base_url=s.llm_base_url or None,
         api_key=s.effective_api_key(),

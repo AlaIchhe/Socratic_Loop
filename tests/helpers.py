@@ -36,6 +36,7 @@ def make_state(**overrides: object) -> AgentState:  # pyright: ignore[reportArgu
         "_confirmed_thesis": "",
         "_improvement_hint": "",
         "max_rounds": 10,
+        "model_config": None,
     }
     return cast(AgentState, {**defaults, **overrides})
 

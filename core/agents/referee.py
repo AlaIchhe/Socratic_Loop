@@ -71,11 +71,26 @@ def referee_deliberate_node(
         - final_result: str            终局总结报告（仅 done 时）
         - _improvement_hint: str       下一轮批判方向指引（仅 continue 时）
     """
-    # 决定结构化输出策略：显式 json_mode 参数优先级最高；其次看全局配置
-    effective_json_mode = json_mode or settings.llm_force_json_mode
+    # 决定结构化输出策略：
+    # 优先级：显式 json_mode 参数 > state["model_config"]["json_mode"] > settings.llm_force_json_mode（全局回退）
+    effective_json_mode = json_mode
+    if not effective_json_mode:
+        model_cfg = state.get("model_config")
+        if model_cfg and model_cfg.get("json_mode"):
+            effective_json_mode = True
+        else:
+            effective_json_mode = settings.llm_force_json_mode
 
     if model is None:
-        model = get_chat_model(temperature=0.0)
+        # 优先用 state["model_config"] 动态创建；回退到 env-only 路径
+        from config.model_manager import build_chat_model, config_from_session
+
+        cfg = config_from_session(state.get("model_config"))
+        if cfg is not None:
+            cfg.temperature = 0.0  # Referee 始终用 0.0
+            model = build_chat_model(cfg)
+        else:
+            model = get_chat_model(temperature=0.0)
 
     # --- Step 1: 获取 RefereeJudgment ---
     history_summary = _build_history_summary(state)
@@ -107,7 +122,9 @@ def referee_deliberate_node(
     else:
         result["status"] = "done"
         final_summary_text = _generate_final_summary(model, state, result, judgment)
-        result["messages"] = state["messages"] + [make_message("referee", final_summary_text, state["round"])]
+        result["messages"] = state["messages"] + [
+            make_message("referee", final_summary_text, state["round"])
+        ]
         result["final_result"] = final_summary_text
 
     return result
@@ -137,7 +154,9 @@ def _judge_via_structured_output(
         )
     )
 
-    raw = invoke_with_retry(structured_model, [system_msg, user_msg], label="RefereeJudgment")
+    raw = invoke_with_retry(
+        structured_model, [system_msg, user_msg], label="RefereeJudgment"
+    )
     return raw if isinstance(raw, RefereeJudgment) else RefereeJudgment(**raw)  # type: ignore[arg-type]
 
 
@@ -167,7 +186,9 @@ def _judge_via_json_mode(
         )
     )
 
-    response = invoke_with_retry(model, [system_msg, user_msg], label="RefereeJudgment(JSON-mode)")
+    response = invoke_with_retry(
+        model, [system_msg, user_msg], label="RefereeJudgment(JSON-mode)"
+    )
     content = extract_content(response).strip()
 
     parsed = _extract_json(content)
@@ -281,7 +302,9 @@ def _generate_final_summary(
             history_json=history_json,
         )
     )
-    summary_response = invoke_with_retry(model, [summary_system, summary_user], label="FinalSummary")
+    summary_response = invoke_with_retry(
+        model, [summary_system, summary_user], label="FinalSummary"
+    )
     return extract_content(summary_response).strip()
 
 

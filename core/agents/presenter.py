@@ -22,7 +22,9 @@ from core.prompts.templates import PRESENTER_SYSTEM_PROMPT, presenter_prompt
 from core.state import AgentState
 
 
-def presenter_compute_node(state: AgentState, model: BaseChatModel | None = None) -> dict:
+def presenter_compute_node(
+    state: AgentState, model: BaseChatModel | None = None
+) -> dict:
     """精确化者计算节点：将用户回应转化为精确论题表述。
 
     Args:
@@ -45,11 +47,13 @@ def presenter_compute_node(state: AgentState, model: BaseChatModel | None = None
             critique=state["_critique"],
             user_response=state["_user_response"],
         ),
+        model_config=state.get("model_config"),
     )
 
     return {
         "_draft_thesis": draft,
-        "messages": state["messages"] + [make_message("presenter", draft, state["round"])],
+        "messages": state["messages"]
+        + [make_message("presenter", draft, state["round"])],
         "status": "awaiting_thesis_confirmation",
     }
 
@@ -76,6 +80,7 @@ def presenter_interact_node(state: AgentState) -> dict:
 
     return {
         "_confirmed_thesis": str(confirmed),
-        "messages": state["messages"] + [make_message("user", str(confirmed), state["round"])],
+        "messages": state["messages"]
+        + [make_message("user", str(confirmed), state["round"])],
         "status": "referee_deliberating",
     }

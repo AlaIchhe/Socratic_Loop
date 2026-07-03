@@ -22,7 +22,9 @@ from core.prompts.templates import OPPONENT_SYSTEM_PROMPT, opponent_prompt
 from core.state import AgentState
 
 
-def opponent_compute_node(state: AgentState, model: BaseChatModel | None = None) -> dict:
+def opponent_compute_node(
+    state: AgentState, model: BaseChatModel | None = None
+) -> dict:
     """批判者计算节点：对 current_thesis 生成批判。
 
     Args:
@@ -43,11 +45,13 @@ def opponent_compute_node(state: AgentState, model: BaseChatModel | None = None)
             current_thesis=state["current_thesis"],
             improvement_hint=state.get("_improvement_hint", ""),
         ),
+        model_config=state.get("model_config"),
     )
 
     return {
         "_critique": critique,
-        "messages": state["messages"] + [make_message("opponent", critique, state["round"])],
+        "messages": state["messages"]
+        + [make_message("opponent", critique, state["round"])],
         "status": "awaiting_critique_response",
     }
 
@@ -79,6 +83,7 @@ def opponent_interact_node(state: AgentState) -> dict:
 
     return {
         "_user_response": str(user_response),
-        "messages": state["messages"] + [make_message("user", str(user_response), state["round"])],
+        "messages": state["messages"]
+        + [make_message("user", str(user_response), state["round"])],
         "status": "presenter_computing",
     }

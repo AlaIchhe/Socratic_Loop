@@ -99,6 +99,25 @@ class AgentState(TypedDict):
     """[持久] 最大轮次安全阀。达到此轮次后 _route_after_referee 强制终止辩论。
     由 make_initial_state() 在辩论启动时捕获，默认 10。"""
 
+    # === 模型配置（前端驱动，跨轮次持久，checkpoint 自动保存） ===
+    model_config: dict[str, object] | None
+    """前端设置的模型配置。None 表示使用 .env 默认值。
+
+    dict 结构对齐 config.model_manager.ModelConfig：
+    {
+        "provider": str,        # "openai" / "deepseek" / ...
+        "base_url": str,        # API 端点
+        "api_key": str,         # API Key
+        "model": str,           # 模型名称
+        "temperature": float,   # 生成温度
+        "max_tokens": int | None,
+        "json_mode": bool,      # 是否强制 JSON mode
+    }
+
+    由 app.py 在首次 graph 调用前注入；后续由 LangGraph checkpointer 自动持久化，
+    中断恢复后配置不丢。
+    """
+
 
 def validate_state_shape(state: object) -> AgentState:
     """校验 state 包含 AgentState 定义的所有字段。
@@ -146,6 +165,7 @@ def make_initial_state(
             "_confirmed_thesis": "",
             "_improvement_hint": "",
             "max_rounds": max_rounds,
+            "model_config": None,
         },
     )
 
