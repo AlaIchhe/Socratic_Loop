@@ -5,9 +5,9 @@
 ## 快速开始
 
 ```bash
-pip install -r requirements.txt
+uv sync --group dev
 cp .env.example .env  # 填入 API Key
-python -m chainlit run app.py
+uv run chainlit run app.py
 # 浏览器打开 http://localhost:8000
 ```
 
@@ -25,7 +25,7 @@ python -m chainlit run app.py
 ## 运行测试
 
 ```bash
-pytest tests/ -v
+uv run --group dev pytest tests/ -v
 ```
 
 ## 架构
