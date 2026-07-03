@@ -7,6 +7,8 @@ name = "Socratic Loop"
 description = "苏格拉底式学习循环 —— 通过连续追问深化理解"
 default_expand_messages = true
 show_readme_as_default = false
+chat_settings_location = "sidebar"
+custom_css = "/public/custom.css"
 
 [meta]
 generated_by = "1.0.0"

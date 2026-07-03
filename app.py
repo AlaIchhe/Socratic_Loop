@@ -37,6 +37,7 @@ def _build_settings_widget(
     temperature: float = 0.7,
     max_tokens: int | None = 4096,
     json_mode: bool = False,
+    refresh_models: bool = False,
     model_options: list[str] | None = None,
 ) -> cl.ChatSettings:
     """构造 Settings widget。model_options 为 None 时使用 provider 的默认列表。"""
@@ -95,6 +96,12 @@ def _build_settings_widget(
                 initial=json_mode,
                 tooltip="DeepSeek 等不支持 with_structured_output 的提供商请开启",
             ),
+            Switch(
+                id="refresh_models",
+                label="🔄 刷新模型列表",
+                initial=refresh_models,
+                tooltip="从 provider 拉取最新可用模型（需要先填写 Base URL 和 API Key）",
+            ),
         ]
     )
 
@@ -128,8 +135,8 @@ async def start() -> None:
     welcome = (
         "👋 欢迎来到苏格拉底式学习循环。\n\n"
         "请发送你想深入探讨的**论题**（一句话观点），我将通过连续追问帮你深化理解。\n\n"
-        "💡 提示：点击右上角 ⚙️ Settings 配置 provider 和 API Key；"
-        "配置完成后会显示「🔄 获取模型列表」按钮，可一键刷新当前可用模型。"
+        "💡 提示：点击右上角 ⚙️ 配置 provider 和 API Key；"
+        "如需查看最新可用模型，打开面板内的「🔄 刷新模型列表」开关后保存即可。"
     )
     await cl.Message(content=welcome).send()
 
@@ -141,7 +148,12 @@ async def start() -> None:
 
 @cl.on_settings_update
 async def on_settings_update(payload: dict) -> None:
-    """用户改 Settings panel 时触发：持久化到 session，并根据配置完整度展示操作提示。"""
+    """用户改 Settings panel 时触发：持久化到 session。
+
+    模型列表刷新是可选动作，只有用户主动打开「🔄 刷新模型列表」开关时才会拉取，
+    避免每次保存配置（例如仅调整 temperature）都发起网络请求。
+    所有反馈通过 toast 呈现（不写入聊天记录），保持对话区仅承载苏格拉底式辩论本身。
+    """
     provider_obj = providers.get_provider(payload.get("provider", "openai"))
 
     # 当 provider 切换时，自动填充其默认 base_url（仅当用户未自定义时）
@@ -160,145 +172,52 @@ async def on_settings_update(payload: dict) -> None:
     )
     cl.user_session.set("model_config", config.__dict__)
 
-    # 根据配置完整度决定展示哪种提示
-    api_key = payload.get("api_key", "")
-    if base_url and api_key:
-        # 配置完整 → 展示"获取模型列表"按钮
-        await cl.Message(
-            content="💡 配置已保存。如需查看 provider 当前可用的完整模型列表，请点击下方按钮：",
-            actions=[
-                cl.Action(name="fetch_models", payload={}, label="🔄 获取模型列表"),
-            ],
-        ).send()
-    elif payload.get("provider") == "custom":
-        # custom provider 但未填完整 → 提示先填写
-        await cl.Message(
-            content="💡 自定义 Provider 需要填写 Base URL 和 API Key 后才能获取模型列表。"
-        ).send()
-
-
-# =============================================================================
-# 测试连接（通过 /test 命令触发，避免依赖 Button widget）
-# =============================================================================
-
-
-async def _run_connection_test() -> None:
-    """校验凭证 + 拉取可用模型，并更新 Settings widget。"""
-    session_config = cl.user_session.get("model_config")
-    if not session_config:
-        await cl.Message(
-            content="⚠️ 请先配置 Provider / Base URL / API Key（改 Settings 面板后自动保存）。"
-        ).send()
+    if not payload.get("refresh_models", False):
+        # 用户未主动请求刷新 → 仅保存配置，不发起任何网络请求
         return
 
-    provider_obj = providers.get_provider(session_config.get("provider", "openai"))
-    if not provider_obj:
-        await cl.Message(content="❌ 未知 provider。").send()
-        return
-
-    base_url = session_config.get("base_url", "")
-    api_key = session_config.get("api_key", "")
-
-    # 异步执行校验（避免阻塞事件循环）
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        None, lambda: provider_obj.validate(base_url, api_key)
-    )
-
-    if not result.valid:
-        await cl.Message(content=f"❌ 连接失败：{result.message}").send()
-        return
-
-    # 校验成功 —— 更新 Model dropdown
-    if result.models:
-        cl.user_session.set("validated_models", result.models)
-        # 重新发送 Settings widget 以更新 Model 下拉列表
-        current_model = session_config.get("model", "")
-        new_initial = (
-            current_model
-            if current_model in result.models
-            else (result.models[0] if result.models else "")
-        )
-
+    async def _reset_switch(model: str, model_options: list[str] | None = None) -> None:
+        """把「刷新模型列表」开关复位为关闭，避免刷新变成常驻状态。"""
         widget = _build_settings_widget(
-            provider=session_config.get("provider", "openai"),
+            provider=config.provider,
             base_url=base_url,
-            api_key=api_key,
-            model=new_initial,
-            temperature=float(session_config.get("temperature", 0.7)),
-            max_tokens=session_config.get("max_tokens"),
-            json_mode=bool(session_config.get("json_mode", False)),
-            model_options=result.models,
+            api_key=payload.get("api_key", ""),
+            model=model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            json_mode=config.json_mode,
+            refresh_models=False,
+            model_options=model_options,
         )
         await widget.refresh()
 
-    await cl.Message(content=f"✅ {result.message}").send()
-
-
-# =============================================================================
-# 获取模型列表按钮（轻量拉取，不消耗 token）
-# =============================================================================
-
-
-async def _fetch_models_action() -> None:
-    """点击"获取模型列表"按钮的回调：仅调 GET /v1/models，不做 POST 验证。"""
-    session_config = cl.user_session.get("model_config")
-    if not session_config:
-        await cl.Message(
-            content="⚠️ 请先配置 Provider / Base URL / API Key（改 Settings 面板后自动保存）。"
-        ).send()
+    api_key = payload.get("api_key", "")
+    if not (base_url and api_key) or provider_obj is None:
+        await cl.context.emitter.send_toast(
+            "请先填写 Base URL 和 API Key，再刷新模型列表。", type="warning"
+        )
+        await _reset_switch(config.model)
         return
 
-    provider_obj = providers.get_provider(session_config.get("provider", "openai"))
-    if not provider_obj:
-        await cl.Message(content="❌ 未知 provider。").send()
-        return
-
-    base_url = session_config.get("base_url", "")
-    api_key = session_config.get("api_key", "")
-
-    if not base_url or not api_key:
-        await cl.Message(
-            content="⚠️ 请先填写 Base URL 和 API Key，再点击获取模型列表。"
-        ).send()
-        return
-
+    # 凭证齐全 → 拉取模型列表并原地刷新 Model 下拉框，同时把开关复位为关闭
     loop = asyncio.get_event_loop()
     models = await loop.run_in_executor(
         None, lambda: provider_obj.fetch_models(base_url, api_key)
     )
 
     if not models:
-        await cl.Message(
-            content="❌ 无法拉取模型列表。请检查 Base URL 和 API Key 是否正确，"
-            "或该 provider 不支持 /v1/models 端点。"
-        ).send()
+        await cl.context.emitter.send_toast(
+            "无法拉取模型列表，请检查 Base URL 和 API Key 是否正确。", type="warning"
+        )
+        await _reset_switch(config.model)
         return
 
-    # 刷新 Settings widget 的 Model 下拉框
-    current_model = session_config.get("model", "")
-    new_initial = (
-        current_model if current_model in models else (models[0] if models else "")
+    current_model = config.model
+    new_initial = current_model if current_model in models else models[0]
+    await _reset_switch(new_initial, model_options=models)
+    await cl.context.emitter.send_toast(
+        f"已刷新模型列表，共 {len(models)} 个模型。", type="success"
     )
-
-    widget = _build_settings_widget(
-        provider=session_config.get("provider", "openai"),
-        base_url=base_url,
-        api_key=api_key,
-        model=new_initial,
-        temperature=float(session_config.get("temperature", 0.7)),
-        max_tokens=session_config.get("max_tokens"),
-        json_mode=bool(session_config.get("json_mode", False)),
-        model_options=models,
-    )
-    await widget.refresh()
-    await cl.Message(content=f"✅ 已刷新模型列表，共 {len(models)} 个模型。").send()
-
-
-@cl.action_callback("fetch_models")
-async def on_fetch_models(action: cl.Action) -> None:
-    """用户点击"获取模型列表"按钮。"""
-    await _fetch_models_action()
 
 
 # =============================================================================
@@ -310,11 +229,6 @@ async def on_fetch_models(action: cl.Action) -> None:
 async def on_message(message: cl.Message) -> None:
     """处理用户消息：驱动 LangGraph 图执行。"""
     content = message.content.strip()
-
-    # /test 命令触发连接测试
-    if content == "/test":
-        await _run_connection_test()
-        return
 
     thread_id = cl.user_session.get("thread_id", str(uuid4()))
     cfg = _config(thread_id)

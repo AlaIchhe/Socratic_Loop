@@ -1,0 +1,17 @@
+/* Chainlit 的滚动容器（如 Settings 侧边栏）未套用其自带的 .custom-scrollbar
+   类，因此默认没有可见滚动条轨道，用户难以感知内容可滚动。
+   这里补上同样风格的细滚动条，颜色跟随主题的 --muted-foreground 变量。 */
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+}
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 2px;
+}
