@@ -128,8 +128,8 @@ async def start() -> None:
     welcome = (
         "👋 欢迎来到苏格拉底式学习循环。\n\n"
         "请发送你想深入探讨的**论题**（一句话观点），我将通过连续追问帮你深化理解。\n\n"
-        "💡 提示：点击右上角 ⚙️ Settings 可随时切换模型、调整参数；"
-        "配置后发 `/test` 可测试连接。"
+        "💡 提示：点击右上角 ⚙️ Settings 配置 provider 和 API Key；"
+        "配置完成后会显示「🔄 获取模型列表」按钮，可一键刷新当前可用模型。"
     )
     await cl.Message(content=welcome).send()
 
@@ -141,7 +141,7 @@ async def start() -> None:
 
 @cl.on_settings_update
 async def on_settings_update(payload: dict) -> None:
-    """用户改 Settings panel 时触发：持久化到 session。"""
+    """用户改 Settings panel 时触发：持久化到 session，并根据配置完整度展示操作提示。"""
     provider_obj = providers.get_provider(payload.get("provider", "openai"))
 
     # 当 provider 切换时，自动填充其默认 base_url（仅当用户未自定义时）
@@ -159,6 +159,22 @@ async def on_settings_update(payload: dict) -> None:
         json_mode=bool(payload.get("json_mode", False)),
     )
     cl.user_session.set("model_config", config.__dict__)
+
+    # 根据配置完整度决定展示哪种提示
+    api_key = payload.get("api_key", "")
+    if base_url and api_key:
+        # 配置完整 → 展示"获取模型列表"按钮
+        await cl.Message(
+            content="💡 配置已保存。如需查看 provider 当前可用的完整模型列表，请点击下方按钮：",
+            actions=[
+                cl.Action(name="fetch_models", payload={}, label="🔄 获取模型列表"),
+            ],
+        ).send()
+    elif payload.get("provider") == "custom":
+        # custom provider 但未填完整 → 提示先填写
+        await cl.Message(
+            content="💡 自定义 Provider 需要填写 Base URL 和 API Key 后才能获取模型列表。"
+        ).send()
 
 
 # =============================================================================
@@ -217,6 +233,72 @@ async def _run_connection_test() -> None:
         await widget.refresh()
 
     await cl.Message(content=f"✅ {result.message}").send()
+
+
+# =============================================================================
+# 获取模型列表按钮（轻量拉取，不消耗 token）
+# =============================================================================
+
+
+async def _fetch_models_action() -> None:
+    """点击"获取模型列表"按钮的回调：仅调 GET /v1/models，不做 POST 验证。"""
+    session_config = cl.user_session.get("model_config")
+    if not session_config:
+        await cl.Message(
+            content="⚠️ 请先配置 Provider / Base URL / API Key（改 Settings 面板后自动保存）。"
+        ).send()
+        return
+
+    provider_obj = providers.get_provider(session_config.get("provider", "openai"))
+    if not provider_obj:
+        await cl.Message(content="❌ 未知 provider。").send()
+        return
+
+    base_url = session_config.get("base_url", "")
+    api_key = session_config.get("api_key", "")
+
+    if not base_url or not api_key:
+        await cl.Message(
+            content="⚠️ 请先填写 Base URL 和 API Key，再点击获取模型列表。"
+        ).send()
+        return
+
+    loop = asyncio.get_event_loop()
+    models = await loop.run_in_executor(
+        None, lambda: provider_obj.fetch_models(base_url, api_key)
+    )
+
+    if not models:
+        await cl.Message(
+            content="❌ 无法拉取模型列表。请检查 Base URL 和 API Key 是否正确，"
+            "或该 provider 不支持 /v1/models 端点。"
+        ).send()
+        return
+
+    # 刷新 Settings widget 的 Model 下拉框
+    current_model = session_config.get("model", "")
+    new_initial = (
+        current_model if current_model in models else (models[0] if models else "")
+    )
+
+    widget = _build_settings_widget(
+        provider=session_config.get("provider", "openai"),
+        base_url=base_url,
+        api_key=api_key,
+        model=new_initial,
+        temperature=float(session_config.get("temperature", 0.7)),
+        max_tokens=session_config.get("max_tokens"),
+        json_mode=bool(session_config.get("json_mode", False)),
+        model_options=models,
+    )
+    await widget.refresh()
+    await cl.Message(content=f"✅ 已刷新模型列表，共 {len(models)} 个模型。").send()
+
+
+@cl.action_callback("fetch_models")
+async def on_fetch_models(action: cl.Action) -> None:
+    """用户点击"获取模型列表"按钮。"""
+    await _fetch_models_action()
 
 
 # =============================================================================

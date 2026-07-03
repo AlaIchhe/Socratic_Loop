@@ -6,33 +6,9 @@
 
 ```bash
 uv sync --group dev
-cp .env.example .env  # 填入 API Key
+cp .env.example .env  # 填入 API Key（也可在浏览器 Settings 面板配置）
 uv run chainlit run app.py
 # 浏览器打开 http://localhost:8000
 ```
 
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `LLM_MODEL` | `gpt-4o` | LLM 模型名称 |
-| `LLM_BASE_URL` |（空） | LLM API 端点（OpenAI 兼容） |
-| `LLM_API_KEY` |（空） | LLM API Key（优先于 OPENAI_API_KEY） |
-| `OPENAI_API_KEY` |（空） | OpenAI API Key（回退） |
-| `LLM_FORCE_JSON_MODE` | `false` | 强制 Referee 使用 JSON-mode（DeepSeek 等设为 true） |
-| `PORT` | `8000` | Chainlit 服务端口 |
-
-## 运行测试
-
-```bash
-uv run --group dev pytest tests/ -v
-```
-
-## 架构
-
-```
-core/          # state + schemas + prompts + agents + graph
-config/        # settings + model（配置 + LLM 工厂）
-tests/         # mock-based 单元测试
-app.py         # Chainlit 入口
-```
+启动后在浏览器 Settings 面板选择 Provider、填入 API Key，点击「🔄 获取模型列表」即可刷新当前可用模型。
